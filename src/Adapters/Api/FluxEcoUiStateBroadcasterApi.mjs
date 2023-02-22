@@ -1,6 +1,10 @@
 export class FluxEcoUiStateBroadcasterApi {
+    #subscriptions;
+    #onPublishLoggers;
+
     constructor() {
-        this.subscriptions = new Map();
+        this.#subscriptions = new Map();
+        this.#onPublishLoggers = new Map();
     }
 
     /**
@@ -10,6 +14,7 @@ export class FluxEcoUiStateBroadcasterApi {
     static async new() {
         return new FluxEcoUiStateBroadcasterApi();
     }
+
 
     #getStateChangedSubscriptionId(subscriberId, idPath) {
         return [subscriberId, this.#getStateChangedChannelPath(idPath)].join(':');
@@ -33,7 +38,22 @@ export class FluxEcoUiStateBroadcasterApi {
         const subscriptionId = this.#getStateChangedSubscriptionId(subscriberId, idPath);
         const channel = new BroadcastChannel(this.#getStateChangedChannelPath(idPath));
         channel.addEventListener('message', (event) => callback(event.data));
-        this.subscriptions.set(subscriptionId, channel);
+        this.#subscriptions.set(subscriptionId, channel);
+    }
+
+    /**
+     * @param {string} loggerId
+     * @param callback
+     */
+    registerOnPublishLogger(loggerId, callback) {
+        this.#onPublishLoggers.set(loggerId, callback);
+    }
+
+    /**
+     * @param {string} loggerId
+     */
+    unregisterOnPublishLogger(loggerId) {
+        this.#onPublishLoggers.delete(loggerId);
     }
 
     /**
@@ -43,13 +63,19 @@ export class FluxEcoUiStateBroadcasterApi {
      */
     unsubscribe(subscriberId, idPath) {
         const subscriptionId = this.#getStateChangedSubscriptionId(subscriberId, idPath);
-        if (this.subscriptions.has(subscriptionId)) {
-            this.subscriptions.get(subscriptionId).close();
-            this.subscriptions.delete(subscriptionId);
+        if (this.#subscriptions.has(subscriptionId)) {
+            this.#subscriptions.get(subscriptionId).close();
+            this.#subscriptions.delete(subscriptionId);
         }
     }
 
     publish(idPath, newState, oldState) {
+        if (this.#onPublishLoggers.size) {
+            this.#onPublishLoggers.forEach(onPublishLoggerCallback => {
+                onPublishLoggerCallback(idPath, newState, oldState)
+            });
+        }
+
         const channel = new BroadcastChannel(this.#getStateChangedChannelPath(idPath));
         channel.postMessage({newState: newState, oldState: oldState})
     }
